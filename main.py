@@ -1,6 +1,5 @@
 import logging
 import sys
-import time
 
 import audio
 import transcriber
@@ -43,7 +42,6 @@ def main() -> None:
             wav_bytes, response_text = result
             conversation_logger.info("A: %s", response_text)
             audio.play_wav(wav_bytes)
-            time.sleep(2)
 
         except KeyboardInterrupt:
             raise

@@ -40,7 +40,27 @@ def transcribe(audio: np.ndarray) -> str:
     # faster-whisper expects float32 mono 1-D array
     data = audio.flatten().astype(np.float32)
 
-    segments, info = _model.transcribe(data, language="ja", beam_size=5)
+    segments, info = _model.transcribe(data, language="ja", beam_size=5, vad_filter=True)
     text = "".join(seg.text for seg in segments).strip()
     logger.info("Transcription: %s", text)
+
+    if _is_hallucination(text):
+        logger.warning("Filtered hallucination: %s", text)
+        return ""
+
     return text
+
+
+_HALLUCINATION_PHRASES = [
+    "ご視聴ありがとうございました",
+    "ご視聴ありがとうございます",
+    "チャンネル登録お願いします",
+    "チャンネル登録よろしくお願いします",
+    "最後までご視聴ありがとうございました",
+    "ありがとうございました",
+]
+
+
+def _is_hallucination(text: str) -> bool:
+    """Check if the transcription is a known Whisper hallucination phrase."""
+    return text in _HALLUCINATION_PHRASES

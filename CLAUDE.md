@@ -45,15 +45,17 @@ main.py          → Entry point; runs the infinite listen→record→transcribe
 
 **Model lifecycle:** `transcriber.load_model()` is called once at startup. It auto-detects CUDA via ctranslate2 and falls back to CPU with int8 compute. Uses the "medium" whisper model with `beam_size=5`.
 
-**Audio processing:** 100ms blocks (BLOCK_SIZE = 1600 samples at 16kHz). Speech starts when RMS exceeds `START_THRESHOLD`, recording stops after `SILENCE_DURATION` seconds below `SILENCE_THRESHOLD`.
+**Audio processing:** 100ms blocks (BLOCK_SIZE = 1600 samples at 16kHz). At startup, `calibrate_noise()` measures ambient noise for 3 seconds and sets a noise floor (mean + 3×std of RMS readings). Speech detection and silence thresholds are applied relative to this noise floor. Speech is confirmed after 3 consecutive blocks (300ms) exceed the threshold, reducing false positives.
+
+**Logging:** Two loggers — `__main__` for debug/info output and `conversation` for Q&A pairs (prefixed `Q:` / `A:`). Both log to console and `/mic-answer.log`. There is a 2-second sleep between main loop cycles.
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
 | SAMPLE_RATE | 16000 | Audio sample rate (Hz) |
-| START_THRESHOLD | 0.02 | RMS level to start recording |
-| SILENCE_THRESHOLD | 0.01 | RMS level considered silence |
+| START_THRESHOLD | 0.005 | RMS level added to noise floor to trigger recording |
+| SILENCE_THRESHOLD | 0.003 | RMS level added to noise floor to detect silence |
 | SILENCE_DURATION | 2.0 | Seconds of silence to stop recording |
 | SEND_API_URL | http://localhost:8080/chat | External API endpoint |
 
