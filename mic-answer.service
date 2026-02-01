@@ -1,0 +1,14 @@
+[Unit]
+Description=mic-answer voice input daemon
+After=network.target sound.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mic-answer
+ExecStart=/opt/mic-answer/run.sh
+Restart=always
+RestartSec=5
+Environment=SEND_API_URL=http://localhost:8080/chat
+
+[Install]
+WantedBy=multi-user.target
