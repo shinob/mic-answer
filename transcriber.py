@@ -10,11 +10,22 @@ logger = logging.getLogger(__name__)
 _model: WhisperModel | None = None
 
 
+def _cuda_available() -> bool:
+    """Check if CUDA is usable via ctranslate2."""
+    try:
+        import ctranslate2
+        return "cuda" in ctranslate2.get_supported_compute_types("cuda")
+    except Exception:
+        return False
+
+
 def load_model() -> None:
     """Load the faster-whisper model once at startup."""
     global _model
-    logger.info("Loading faster-whisper model (medium, cuda)...")
-    _model = WhisperModel("medium", device="cuda", compute_type="auto")
+    device = "cuda" if _cuda_available() else "cpu"
+    compute = "auto" if device == "cuda" else "int8"
+    logger.info("Loading faster-whisper model (medium, %s)...", device)
+    _model = WhisperModel("medium", device=device, compute_type=compute)
     logger.info("Model loaded")
 
 
