@@ -14,8 +14,11 @@ def _cuda_available() -> bool:
     """Check if CUDA is usable via ctranslate2."""
     try:
         import ctranslate2
-        return "cuda" in ctranslate2.get_supported_compute_types("cuda")
+        supported = ctranslate2.get_supported_compute_types("cuda")
+        logger.info("CUDA available: supported compute types=%s", supported)
+        return len(supported) > 0
     except Exception:
+        logger.warning("CUDA check failed", exc_info=True)
         return False
 
 

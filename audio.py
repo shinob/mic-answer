@@ -13,27 +13,60 @@ logger = logging.getLogger(__name__)
 BLOCK_DURATION = 0.1  # 100ms per block
 BLOCK_SIZE = int(SAMPLE_RATE * BLOCK_DURATION)
 
+CALIBRATION_DURATION = 3.0  # seconds to measure ambient noise
+CALIBRATION_BLOCKS = int(CALIBRATION_DURATION / BLOCK_DURATION)
+
+SPEECH_CONFIRM_BLOCKS = 3  # consecutive blocks above threshold to confirm speech (300ms)
+
+_noise_floor: float = 0.0
+
 
 def _rms(data: np.ndarray) -> float:
-    return float(np.sqrt(np.mean(data ** 2)))
+    centered = data - np.mean(data)
+    return float(np.sqrt(np.mean(centered ** 2)))
 
 
-def wait_for_speech() -> np.ndarray:
-    """Block until speech is detected. Returns the first audio block that exceeded the threshold."""
-    logger.info("Waiting for speech...")
+def calibrate_noise() -> None:
+    """Measure ambient noise level and set the noise floor baseline."""
+    global _noise_floor
+    logger.info("Calibrating ambient noise level (%.1fs)...", CALIBRATION_DURATION)
+    levels = []
+    for _ in range(CALIBRATION_BLOCKS):
+        block = sd.rec(BLOCK_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype="float32")
+        sd.wait()
+        levels.append(_rms(block))
+    arr = np.array(levels)
+    _noise_floor = float(np.mean(arr) + 3 * np.std(arr))
+    logger.info("Noise floor calibrated: mean=%.6f std=%.6f floor=%.6f (effective start threshold=%.4f)",
+                float(np.mean(arr)), float(np.std(arr)), _noise_floor, _noise_floor + START_THRESHOLD)
+
+
+def wait_for_speech() -> list[np.ndarray]:
+    """Block until speech is detected. Returns the audio blocks that confirmed speech."""
+    effective_threshold = _noise_floor + START_THRESHOLD
+    logger.info("Waiting for speech (threshold=%.4f)...", effective_threshold)
+    consecutive = 0
+    pending_blocks: list[np.ndarray] = []
     while True:
         block = sd.rec(BLOCK_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype="float32")
         sd.wait()
         level = _rms(block)
-        if level >= START_THRESHOLD:
-            logger.info("Speech detected (RMS=%.4f)", level)
-            return block
+        if level >= effective_threshold:
+            consecutive += 1
+            pending_blocks.append(block)
+            if consecutive >= SPEECH_CONFIRM_BLOCKS:
+                logger.info("Speech detected (RMS=%.4f, %d consecutive blocks)",
+                            level, consecutive)
+                return pending_blocks
+        else:
+            consecutive = 0
+            pending_blocks.clear()
 
 
-def record_until_silence(initial_block: np.ndarray) -> np.ndarray:
-    """Record audio starting from initial_block until silence persists for SILENCE_DURATION seconds."""
+def record_until_silence(initial_blocks: list[np.ndarray]) -> np.ndarray:
+    """Record audio starting from initial_blocks until silence persists for SILENCE_DURATION seconds."""
     logger.info("Recording...")
-    frames = [initial_block]
+    frames = list(initial_blocks)
     silence_start: float | None = None
 
     while True:
@@ -42,7 +75,7 @@ def record_until_silence(initial_block: np.ndarray) -> np.ndarray:
         frames.append(block)
         level = _rms(block)
 
-        if level < SILENCE_THRESHOLD:
+        if level < _noise_floor + SILENCE_THRESHOLD:
             if silence_start is None:
                 silence_start = time.monotonic()
             elif time.monotonic() - silence_start >= SILENCE_DURATION:
