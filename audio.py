@@ -2,11 +2,12 @@ import logging
 import io
 import time
 import wave
+from collections.abc import Callable
 
 import numpy as np
 import sounddevice as sd
 
-from config import SAMPLE_RATE, START_THRESHOLD, SILENCE_THRESHOLD, SILENCE_DURATION
+from config import SAMPLE_RATE, SILENCE_DURATION
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,10 @@ def _rms(data: np.ndarray) -> float:
     return float(np.sqrt(np.mean(centered ** 2)))
 
 
-def calibrate_noise() -> None:
-    """Measure ambient noise level and set the noise floor baseline."""
+def calibrate_noise() -> float:
+    """Measure ambient noise level and set the noise floor baseline. Returns the noise floor."""
     global _noise_floor
+    from config import START_THRESHOLD
     logger.info("Calibrating ambient noise level (%.1fs)...", CALIBRATION_DURATION)
     levels = []
     for _ in range(CALIBRATION_BLOCKS):
@@ -39,10 +41,12 @@ def calibrate_noise() -> None:
     _noise_floor = float(np.mean(arr) + 3 * np.std(arr))
     logger.info("Noise floor calibrated: mean=%.6f std=%.6f floor=%.6f (effective start threshold=%.4f)",
                 float(np.mean(arr)), float(np.std(arr)), _noise_floor, _noise_floor + START_THRESHOLD)
+    return _noise_floor
 
 
-def wait_for_speech() -> list[np.ndarray]:
+def wait_for_speech(on_rms: Callable[[float], None] | None = None) -> list[np.ndarray]:
     """Block until speech is detected. Returns the audio blocks that confirmed speech."""
+    from config import START_THRESHOLD
     effective_threshold = _noise_floor + START_THRESHOLD
     logger.info("Waiting for speech (threshold=%.4f)...", effective_threshold)
     consecutive = 0
@@ -51,6 +55,8 @@ def wait_for_speech() -> list[np.ndarray]:
         block = sd.rec(BLOCK_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype="float32")
         sd.wait()
         level = _rms(block)
+        if on_rms is not None:
+            on_rms(level)
         if level >= effective_threshold:
             consecutive += 1
             pending_blocks.append(block)
@@ -63,8 +69,10 @@ def wait_for_speech() -> list[np.ndarray]:
             pending_blocks.clear()
 
 
-def record_until_silence(initial_blocks: list[np.ndarray]) -> np.ndarray:
+def record_until_silence(initial_blocks: list[np.ndarray],
+                         on_rms: Callable[[float], None] | None = None) -> np.ndarray:
     """Record audio starting from initial_blocks until silence persists for SILENCE_DURATION seconds."""
+    from config import SILENCE_THRESHOLD
     logger.info("Recording...")
     frames = list(initial_blocks)
     silence_start: float | None = None
@@ -74,6 +82,8 @@ def record_until_silence(initial_blocks: list[np.ndarray]) -> np.ndarray:
         sd.wait()
         frames.append(block)
         level = _rms(block)
+        if on_rms is not None:
+            on_rms(level)
 
         if level < _noise_floor + SILENCE_THRESHOLD:
             if silence_start is None:
@@ -89,16 +99,38 @@ def record_until_silence(initial_blocks: list[np.ndarray]) -> np.ndarray:
     return audio
 
 
-def play_wav(wav_bytes: bytes) -> None:
-    """Play WAV audio from bytes."""
+def play_wav(wav_bytes: bytes, on_rms: Callable[[float], None] | None = None) -> None:
+    """Play WAV audio from bytes. If on_rms is provided, report output RMS per block."""
     logger.info("Playing response audio...")
     with io.BytesIO(wav_bytes) as buf:
         with wave.open(buf, "rb") as wf:
             sr = wf.getframerate()
             channels = wf.getnchannels()
             raw = wf.readframes(wf.getnframes())
-            dtype = {1: "int8", 2: "int16", 4: "int32"}[wf.getsampwidth()]
+            dtype_map = {1: "int8", 2: "int16", 4: "int32"}
+            sample_width = wf.getsampwidth()
+            dtype = dtype_map[sample_width]
             data = np.frombuffer(raw, dtype=dtype).reshape(-1, channels)
-    sd.play(data, samplerate=sr)
-    sd.wait()
+
+    if on_rms is None:
+        sd.play(data, samplerate=sr)
+        sd.wait()
+    else:
+        block_size = int(sr * BLOCK_DURATION)
+        float_data = data.astype(np.float32) / (2 ** (sample_width * 8 - 1))
+        with sd.OutputStream(samplerate=sr, channels=channels, dtype="float32") as stream:
+            for offset in range(0, len(float_data), block_size):
+                block = float_data[offset:offset + block_size]
+                stream.write(block)
+                on_rms(_rms(block))
+        on_rms(0.0)
     logger.info("Playback finished")
+
+
+def flush_mic(duration: float = 1.0) -> None:
+    """Discard microphone input for the given duration to avoid echo feedback."""
+    blocks = int(duration / BLOCK_DURATION)
+    logger.info("Flushing mic input (%.1fs)...", duration)
+    for _ in range(blocks):
+        sd.rec(BLOCK_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype="float32")
+        sd.wait()

@@ -3,3 +3,6 @@ sounddevice
 numpy
 requests
 nvidia-cublas-cu12
+fastapi
+uvicorn[standard]
+websockets

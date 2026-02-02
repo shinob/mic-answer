@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mic-answer</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --border: #0f3460;
+    --text: #e0e0e0;
+    --muted: #888;
+    --accent: #e94560;
+    --green: #4ecca3;
+    --blue: #3498db;
+    --yellow: #f1c40f;
+    --orange: #e67e22;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 1.4rem; margin-bottom: 20px; color: var(--green); }
+  .connection-badge {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #e74c3c;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .connection-badge.connected { background: var(--green); }
+
+  /* Status Bar */
+  .status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .status-label {
+    font-size: 2rem;
+    font-weight: bold;
+    transition: color 0.3s;
+  }
+  .status-idle { color: var(--muted); }
+  .status-listening { color: var(--green); }
+  .status-speech_detected, .status-recording { color: var(--accent); }
+  .status-transcribing { color: var(--yellow); }
+  .status-sending { color: var(--orange); }
+  .status-playing { color: var(--blue); }
+
+  /* RMS Meter */
+  .meter-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .meter-section h2 { font-size: 0.9rem; color: var(--muted); margin-bottom: 8px; }
+  .meter-track {
+    position: relative;
+    height: 24px;
+    background: #111;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--green), var(--yellow), var(--accent));
+    transition: width 0.1s;
+    border-radius: 4px;
+  }
+  .meter-fill-output {
+    background: linear-gradient(90deg, var(--blue), #9b59b6, var(--accent));
+  }
+  .meter-threshold {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: rgba(255,255,255,0.6);
+  }
+  .meter-values {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Conversations */
+  .conversations {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .conversations h2 { font-size: 0.9rem; color: var(--muted); margin-bottom: 12px; }
+  .conv-card {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .conv-card:last-child { margin-bottom: 0; }
+  .conv-q { color: var(--green); margin-bottom: 4px; }
+  .conv-a { color: var(--blue); margin-bottom: 4px; }
+  .conv-time { font-size: 0.7rem; color: var(--muted); }
+  .conv-empty { color: var(--muted); font-style: italic; }
+
+  /* Settings */
+  .settings {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .settings h2 { font-size: 0.9rem; color: var(--muted); margin-bottom: 12px; }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+  .setting-row label {
+    flex: 0 0 180px;
+    font-size: 0.85rem;
+  }
+  .setting-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 0.85rem;
+  }
+  .setting-row input:focus { outline: none; border-color: var(--green); }
+  .btn {
+    background: var(--green);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    padding: 8px 20px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .save-status { font-size: 0.8rem; margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>mic-answer <span id="connBadge" class="connection-badge"></span></h1>
+
+  <div class="status-bar">
+    <div id="statusLabel" class="status-label status-idle">---</div>
+  </div>
+
+  <div class="meter-section">
+    <h2>Input Level (Mic)</h2>
+    <div class="meter-track">
+      <div id="meterFill" class="meter-fill"></div>
+      <div id="threshLine" class="meter-threshold" style="left:0%"></div>
+    </div>
+    <div class="meter-values">
+      <span id="rmsValue">RMS: 0.0000</span>
+      <span id="noiseValue">Noise floor: 0.0000</span>
+    </div>
+  </div>
+
+  <div class="meter-section">
+    <h2>Output Level (Playback)</h2>
+    <div class="meter-track">
+      <div id="outputMeterFill" class="meter-fill meter-fill-output"></div>
+    </div>
+    <div class="meter-values">
+      <span id="outputRmsValue">RMS: 0.0000</span>
+      <span></span>
+    </div>
+  </div>
+
+  <div class="conversations">
+    <h2>Conversations</h2>
+    <div id="convList"><div class="conv-empty">No conversations yet</div></div>
+  </div>
+
+  <div class="settings">
+    <h2>Settings</h2>
+    <div class="setting-row">
+      <label>START_THRESHOLD</label>
+      <input type="number" id="cfg_START_THRESHOLD" step="0.001" min="0">
+    </div>
+    <div class="setting-row">
+      <label>SILENCE_THRESHOLD</label>
+      <input type="number" id="cfg_SILENCE_THRESHOLD" step="0.001" min="0">
+    </div>
+    <div class="setting-row">
+      <label>SILENCE_DURATION</label>
+      <input type="number" id="cfg_SILENCE_DURATION" step="0.1" min="0.1">
+    </div>
+    <div class="setting-row">
+      <label>SEND_API_URL</label>
+      <input type="text" id="cfg_SEND_API_URL">
+    </div>
+    <div class="setting-row">
+      <label></label>
+      <button class="btn" id="saveBtn" onclick="saveConfig()">Save</button>
+      <span class="save-status" id="saveStatus"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUS_LABELS = {
+  idle: '待機中',
+  listening: '待機中（音声検知中）',
+  speech_detected: '発話検知',
+  recording: '録音中',
+  transcribing: '文字起こし中',
+  sending: 'API送信中',
+  playing: '再生中',
+};
+
+const METER_MAX = 0.1; // max RMS for full bar
+let currentConfig = {};
+let ws;
+let reconnectTimer;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+
+  ws.onopen = () => {
+    document.getElementById('connBadge').classList.add('connected');
+    clearTimeout(reconnectTimer);
+    // Clear conversation list on (re)connect; server will resend snapshot
+    document.getElementById('convList').innerHTML =
+      '<div class="conv-empty">No conversations yet</div>';
+  };
+
+  ws.onclose = () => {
+    document.getElementById('connBadge').classList.remove('connected');
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'state') handleState(msg);
+    else if (msg.type === 'conversation') handleConversation(msg);
+    else if (msg.type === 'config') handleConfig(msg);
+  };
+}
+
+function handleState(msg) {
+  const label = document.getElementById('statusLabel');
+  label.textContent = STATUS_LABELS[msg.status] || msg.status;
+  label.className = 'status-label status-' + msg.status;
+
+  const rms = msg.rms || 0;
+  const pct = Math.min(rms / METER_MAX * 100, 100);
+  document.getElementById('meterFill').style.width = pct + '%';
+  document.getElementById('rmsValue').textContent = 'RMS: ' + rms.toFixed(4);
+
+  const outRms = msg.output_rms || 0;
+  const outPct = Math.min(outRms / METER_MAX * 100, 100);
+  document.getElementById('outputMeterFill').style.width = outPct + '%';
+  document.getElementById('outputRmsValue').textContent = 'RMS: ' + outRms.toFixed(4);
+
+  if (msg.noise_floor !== undefined) {
+    const nf = msg.noise_floor;
+    document.getElementById('noiseValue').textContent = 'Noise floor: ' + nf.toFixed(4);
+    const startTh = nf + (currentConfig.START_THRESHOLD || 0.005);
+    const thPct = Math.min(startTh / METER_MAX * 100, 100);
+    document.getElementById('threshLine').style.left = thPct + '%';
+  }
+}
+
+function handleConversation(msg) {
+  const list = document.getElementById('convList');
+  const empty = list.querySelector('.conv-empty');
+  if (empty) empty.remove();
+
+  const card = document.createElement('div');
+  card.className = 'conv-card';
+  const ts = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString('ja-JP') : '';
+  card.innerHTML =
+    '<div class="conv-q">Q: ' + escHtml(msg.q) + '</div>' +
+    '<div class="conv-a">A: ' + escHtml(msg.a) + '</div>' +
+    '<div class="conv-time">' + ts + '</div>';
+  list.insertBefore(card, list.firstChild);
+}
+
+function handleConfig(msg) {
+  const keys = ['START_THRESHOLD', 'SILENCE_THRESHOLD', 'SILENCE_DURATION', 'SEND_API_URL'];
+  keys.forEach(k => {
+    if (msg[k] !== undefined) {
+      currentConfig[k] = msg[k];
+      const el = document.getElementById('cfg_' + k);
+      if (el) el.value = msg[k];
+    }
+  });
+  // Update threshold line
+  if (currentConfig.START_THRESHOLD !== undefined) {
+    const nf = parseFloat(document.getElementById('noiseValue').textContent.split(': ')[1]) || 0;
+    const startTh = nf + currentConfig.START_THRESHOLD;
+    const thPct = Math.min(startTh / METER_MAX * 100, 100);
+    document.getElementById('threshLine').style.left = thPct + '%';
+  }
+}
+
+async function saveConfig() {
+  const btn = document.getElementById('saveBtn');
+  const status = document.getElementById('saveStatus');
+  btn.disabled = true;
+  status.textContent = '';
+
+  const keys = ['START_THRESHOLD', 'SILENCE_THRESHOLD', 'SILENCE_DURATION', 'SEND_API_URL'];
+  try {
+    for (const k of keys) {
+      const el = document.getElementById('cfg_' + k);
+      if (!el) continue;
+      const val = el.value;
+      if (String(currentConfig[k]) === val) continue;
+      const resp = await fetch('/api/config', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key: k, value: val}),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Failed');
+      }
+    }
+    status.textContent = 'Saved';
+    status.style.color = '#4ecca3';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#e94560';
+  }
+  btn.disabled = false;
+  setTimeout(() => { status.textContent = ''; }, 3000);
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+connect();
+</script>
+</body>
+</html>
