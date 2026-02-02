@@ -7,3 +7,6 @@ dist/
 build/
 .env
 noise.wav
+*.glb
+*.vrm
+bg.jpg

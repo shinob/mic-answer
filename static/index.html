@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mic-answer</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/lib/three-vrm.module.min.js"
+  }
+}
+</script>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -161,11 +170,25 @@
   .btn:hover { opacity: 0.9; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .save-status { font-size: 0.8rem; margin-left: 10px; }
+
+  /* VRM Character */
+  #vrm-container {
+    width: 100%;
+    height: 500px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: url('/static/bg.jpg') center/cover no-repeat;
+    border: 1px solid var(--border);
+  }
+  #vrm-container canvas { display: block; }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>mic-answer <span id="connBadge" class="connection-badge"></span></h1>
+
+  <div id="vrm-container"></div>
 
   <div class="status-bar">
     <div id="statusLabel" class="status-label status-idle">---</div>
@@ -283,6 +306,12 @@ function handleState(msg) {
   document.getElementById('outputMeterFill').style.width = outPct + '%';
   document.getElementById('outputRmsValue').textContent = 'RMS: ' + outRms.toFixed(4);
 
+  // Forward to VRM bridge
+  if (window.vrmBridge) {
+    window.vrmBridge.outputRms = outRms;
+    window.vrmBridge.status = msg.status;
+  }
+
   if (msg.noise_floor !== undefined) {
     const nf = msg.noise_floor;
     document.getElementById('noiseValue').textContent = 'Noise floor: ' + nf.toFixed(4);
@@ -366,5 +395,6 @@ function escHtml(s) {
 
 connect();
 </script>
+<script type="module" src="/static/vrm-character.js"></script>
 </body>
 </html>

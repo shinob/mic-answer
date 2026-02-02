@@ -1,11 +1,16 @@
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import signal
 import threading
 
 import uvicorn
+
+# Fix MIME types for 3D model files
+mimetypes.add_type("application/octet-stream", ".vrm")
+mimetypes.add_type("model/gltf-binary", ".glb")
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
