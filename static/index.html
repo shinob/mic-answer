@@ -173,22 +173,36 @@
 
   /* VRM Character */
   #vrm-container {
+    position: relative;
     width: 100%;
-    height: 500px;
+    height: 80vh;
     margin-bottom: 16px;
     border-radius: 8px;
     overflow: hidden;
-    background: url('/static/bg.jpg') center/cover no-repeat;
     border: 1px solid var(--border);
   }
-  #vrm-container canvas { display: block; }
+  #vrm-container video {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+  #vrm-container canvas {
+    position: absolute;
+    top: 0; left: 0;
+    display: block;
+    z-index: 1;
+  }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>mic-answer <span id="connBadge" class="connection-badge"></span></h1>
+  <h1>status <span id="connBadge" class="connection-badge"></span></h1>
 
-  <div id="vrm-container"></div>
+  <div id="vrm-container">
+    <video autoplay loop muted playsinline src="/static/bg.mp4"></video>
+  </div>
 
   <div class="status-bar">
     <div id="statusLabel" class="status-label status-idle">---</div>

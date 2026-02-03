@@ -6,7 +6,23 @@ __pycache__/
 dist/
 build/
 .env
-noise.wav
+
+# Audio files
+*.wav
+
+# 3D models
 *.glb
 *.vrm
+static/model.glb.*
+static/model.vrm.*
+
+# Background media
 bg.jpg
+bg.mp4
+static/*.mp4.*
+
+# Temporary docs
+glb.md
+
+# Claude Code
+.claude/

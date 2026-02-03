@@ -44,7 +44,7 @@ const loader = new GLTFLoader();
 loader.register((parser) => new VRMLoaderPlugin(parser));
 
 // Set natural resting pose (arms down from T-pose)
-function setRestPose(vrm) {
+function setRestPose(vrm, metaVersion) {
   const humanoid = vrm.humanoid;
   if (!humanoid) return;
 
@@ -54,32 +54,14 @@ function setRestPose(vrm) {
   const rightLower = humanoid.getNormalizedBoneNode('rightLowerArm');
   if (!leftUpper && !rightUpper) return;
 
-  // Measure T-pose width as baseline
-  vrm.update(0);
-  const tposeBox = new THREE.Box3().setFromObject(vrm.scene);
-  const tposeWidth = tposeBox.max.x - tposeBox.min.x;
+  // VRM 1.0 uses positive sign, VRM 0.x uses negative
+  const sign = (metaVersion === '1') ? 1 : -1;
+  //console.log(`Rest pose: metaVersion=${metaVersion}, sign=${sign}`);
 
-  // Try positive Z for left arm
-  const sign = 1;
-  const apply = (s) => {
-    if (leftUpper)  leftUpper.rotation.z  =  1.2 * s;
-    if (rightUpper) rightUpper.rotation.z = -1.2 * s;
-    if (leftLower)  leftLower.rotation.z  =  0.15 * s;
-    if (rightLower) rightLower.rotation.z = -0.15 * s;
-  };
-
-  apply(1);
-  vrm.update(0);
-  const tryBox = new THREE.Box3().setFromObject(vrm.scene);
-  const tryWidth = tryBox.max.x - tryBox.min.x;
-
-  if (tryWidth >= tposeWidth) {
-    // Arms went up or stayed wide — flip direction
-    console.log('Rest pose: using flipped rotation');
-    apply(-1);
-  } else {
-    console.log('Rest pose: using standard rotation');
-  }
+  if (leftUpper)  leftUpper.rotation.z  = -1.3 * sign;
+  if (rightUpper) rightUpper.rotation.z =  1.3 * sign;
+  if (leftLower)  leftLower.rotation.z  =  0.15 * sign;
+  if (rightLower) rightLower.rotation.z = -0.15 * sign;
 }
 
 // Auto-fit camera to upper body (bust shot)
@@ -93,14 +75,14 @@ function fitCameraToModel(object) {
   const bustY = min.y + size.y * 0.6;
   const focusCenter = new THREE.Vector3(
     (min.x + max.x) / 2,
-    (bustY + max.y) / 2,
+    (bustY + max.y) / 2 + 0.05,  // offset down
     (min.z + max.z) / 2
   );
   const frameHeight = max.y - bustY;
 
   const fov = camera.fov * (Math.PI / 180);
   let dist = (frameHeight / 2) / Math.tan(fov / 2);
-  dist *= 1.3; // padding
+  dist *= 1.2; // padding (lower = more zoom)
 
   camera.position.set(focusCenter.x, focusCenter.y, focusCenter.z + dist);
   camera.lookAt(focusCenter);
@@ -126,7 +108,7 @@ function loadModel(url) {
               VRMUtils.rotateVRM0(vrm);
             }
             scene.add(vrm.scene);
-            setRestPose(vrm);
+            setRestPose(vrm, metaVersion);
             vrm.update(0);
             fitCameraToModel(vrm.scene);
             console.log('VRM model loaded:', url);
