@@ -169,6 +169,23 @@ function randomBlink() {
   return 2 + Math.random() * 4; // 2-6 seconds
 }
 
+// Eye gaze state
+let gazeTimer = 0;
+let nextGazeAt = 1 + Math.random() * 2;
+let gazeTargetX = 0;
+let gazeTargetY = 0;
+let gazeCurrentX = 0;
+let gazeCurrentY = 0;
+
+// Nod state (for playing status)
+let nodTimer = 0;
+let nextNodAt = 1 + Math.random() * 2;
+let nodPhase = 0; // 0=idle, 1=nodding down, 2=nodding up
+let nodIntensity = 0;
+
+// Body sway state
+let swayPhaseOffset = Math.random() * Math.PI * 2;
+
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
@@ -179,12 +196,12 @@ function animate() {
     vrm.update(delta);
 
     const expr = vrm.expressionManager;
+    const rms = window.vrmBridge.outputRms || 0;
+    const status = window.vrmBridge.status || 'idle';
+    const speaking = status === 'playing' && rms > 0.001;
+
     if (expr) {
       // --- Lip sync ---
-      const rms = window.vrmBridge.outputRms || 0;
-      const status = window.vrmBridge.status || 'idle';
-      const speaking = status === 'playing' && rms > 0.001;
-
       if (speaking) {
         const intensity = Math.min(rms / 0.05, 1.0);
         const t = elapsed * 8;
@@ -198,6 +215,24 @@ function animate() {
         expr.setValue('aa', curAa * 0.85);
         expr.setValue('oh', curOh * 0.85);
       }
+
+      // --- Status-based expressions ---
+      let targetHappy = 0;
+      let targetSurprised = 0;
+
+      if (status === 'playing' || status === 'sending') {
+        // Smiling while speaking
+        targetHappy = 0.3;
+      } else if (status === 'recording' || status === 'speech_detected') {
+        // Interested/attentive look while listening
+        targetSurprised = 0.15;
+      }
+
+      // Smooth transition for expressions
+      const curHappy = expr.getValue('happy') || 0;
+      const curSurprised = expr.getValue('surprised') || 0;
+      expr.setValue('happy', curHappy + (targetHappy - curHappy) * 0.05);
+      expr.setValue('surprised', curSurprised + (targetSurprised - curSurprised) * 0.05);
 
       // --- Blink ---
       blinkTimer += delta;
@@ -219,6 +254,36 @@ function animate() {
           nextBlinkAt = randomBlink();
         }
       }
+
+      // --- Eye gaze movement ---
+      gazeTimer += delta;
+      if (gazeTimer >= nextGazeAt) {
+        gazeTimer = 0;
+        nextGazeAt = 1.5 + Math.random() * 3;
+        // Random target within small range
+        gazeTargetX = (Math.random() - 0.5) * 0.4;
+        gazeTargetY = (Math.random() - 0.5) * 0.25;
+      }
+
+      // Smooth interpolation to target
+      gazeCurrentX += (gazeTargetX - gazeCurrentX) * 0.03;
+      gazeCurrentY += (gazeTargetY - gazeCurrentY) * 0.03;
+
+      // Apply gaze using lookAt expressions
+      if (gazeCurrentX > 0) {
+        expr.setValue('lookRight', gazeCurrentX);
+        expr.setValue('lookLeft', 0);
+      } else {
+        expr.setValue('lookLeft', -gazeCurrentX);
+        expr.setValue('lookRight', 0);
+      }
+      if (gazeCurrentY > 0) {
+        expr.setValue('lookUp', gazeCurrentY);
+        expr.setValue('lookDown', 0);
+      } else {
+        expr.setValue('lookDown', -gazeCurrentY);
+        expr.setValue('lookUp', 0);
+      }
     }
 
     // --- Breathing (spine bone) ---
@@ -228,11 +293,57 @@ function animate() {
       spine.rotation.x = breathe;
     }
 
-    // --- Subtle head movement ---
+    // --- Body sway (chest/upper spine) ---
+    const chest = vrm.humanoid?.getNormalizedBoneNode('chest') || vrm.humanoid?.getNormalizedBoneNode('upperChest');
+    if (chest) {
+      const swayX = Math.sin(elapsed * 0.4 + swayPhaseOffset) * 0.006;
+      const swayZ = Math.sin(elapsed * 0.3 + swayPhaseOffset * 1.3) * 0.004;
+      chest.rotation.x = swayX;
+      chest.rotation.z = swayZ;
+    }
+
+    // --- Head movement with nodding ---
     const head = vrm.humanoid?.getNormalizedBoneNode('head');
     if (head) {
-      head.rotation.x = Math.sin(elapsed * 0.7) * 0.015;
-      head.rotation.y = Math.sin(elapsed * 0.5) * 0.01;
+      // Base subtle movement
+      let headX = Math.sin(elapsed * 0.7) * 0.015;
+      let headY = Math.sin(elapsed * 0.5) * 0.01;
+
+      // Nodding while speaking
+      if (speaking) {
+        nodTimer += delta;
+        if (nodPhase === 0 && nodTimer >= nextNodAt) {
+          nodPhase = 1;
+          nodTimer = 0;
+          nodIntensity = 0.03 + Math.random() * 0.02;
+          nextNodAt = 0.8 + Math.random() * 1.5;
+        }
+
+        if (nodPhase === 1) {
+          const progress = Math.min(nodTimer / 0.15, 1.0);
+          headX += nodIntensity * progress;
+          if (progress >= 1.0) { nodPhase = 2; nodTimer = 0; }
+        } else if (nodPhase === 2) {
+          const progress = Math.min(nodTimer / 0.2, 1.0);
+          headX += nodIntensity * (1.0 - progress);
+          if (progress >= 1.0) { nodPhase = 0; nodTimer = 0; }
+        }
+      } else {
+        nodPhase = 0;
+        nodTimer = 0;
+      }
+
+      head.rotation.x = headX;
+      head.rotation.y = headY;
+    }
+
+    // --- Shoulder subtle movement ---
+    const leftShoulder = vrm.humanoid?.getNormalizedBoneNode('leftShoulder');
+    const rightShoulder = vrm.humanoid?.getNormalizedBoneNode('rightShoulder');
+    if (leftShoulder && rightShoulder) {
+      const shoulderMove = Math.sin(elapsed * 1.8) * 0.003;
+      leftShoulder.rotation.z = shoulderMove;
+      rightShoulder.rotation.z = -shoulderMove;
     }
   }
 

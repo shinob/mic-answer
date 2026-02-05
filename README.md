@@ -95,3 +95,22 @@ WAV ファイルを使ってパイプラインをテストできます。
 source .venv/bin/activate
 python test_with_file.py test.wav
 ```
+
+## ライセンス
+
+本プロジェクトは以下のオープンソースライブラリを使用しています。
+
+| ライブラリ | ライセンス | 著作権者 |
+|------------|-----------|----------|
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | MIT | Copyright (c) 2023 SYSTRAN |
+| [OpenAI Whisper](https://github.com/openai/whisper) | MIT | Copyright (c) 2022 OpenAI |
+| [sounddevice](https://github.com/spatialaudio/python-sounddevice) | MIT | Copyright (c) 2015-2025 Matthias Geier |
+| [NumPy](https://github.com/numpy/numpy) | BSD 3-Clause | Copyright (c) 2005-2025, NumPy Developers |
+| [requests](https://github.com/psf/requests) | Apache 2.0 | Copyright Kenneth Reitz and Python Software Foundation |
+| [FastAPI](https://github.com/tiangolo/fastapi) | MIT | Copyright (c) 2018 Sebastián Ramírez |
+| [Uvicorn](https://github.com/encode/uvicorn) | BSD 3-Clause | Copyright © 2017-present, Encode OSS Ltd |
+| [websockets](https://github.com/python-websockets/websockets) | BSD 3-Clause | Copyright (c) Aymeric Augustin and contributors |
+
+GPU環境で使用する場合、本ソフトウェアには NVIDIA Corporation が提供するソースコードが含まれます。
+
+詳細は [ライセンス.md](ライセンス.md) を参照してください。

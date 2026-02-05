@@ -7,7 +7,7 @@ from collections.abc import Callable
 import numpy as np
 import sounddevice as sd
 
-from config import SAMPLE_RATE, SILENCE_DURATION
+from config import SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,8 @@ def calibrate_noise() -> float:
 def wait_for_speech(on_rms: Callable[[float], None] | None = None) -> list[np.ndarray]:
     """Block until speech is detected. Returns the audio blocks that confirmed speech."""
     from config import START_THRESHOLD
-    effective_threshold = _noise_floor + START_THRESHOLD
+    #effective_threshold = _noise_floor + START_THRESHOLD
+    effective_threshold = START_THRESHOLD
     logger.info("Waiting for speech (threshold=%.4f)...", effective_threshold)
     consecutive = 0
     pending_blocks: list[np.ndarray] = []
@@ -72,7 +73,7 @@ def wait_for_speech(on_rms: Callable[[float], None] | None = None) -> list[np.nd
 def record_until_silence(initial_blocks: list[np.ndarray],
                          on_rms: Callable[[float], None] | None = None) -> np.ndarray:
     """Record audio starting from initial_blocks until silence persists for SILENCE_DURATION seconds."""
-    from config import SILENCE_THRESHOLD
+    from config import SILENCE_THRESHOLD, SILENCE_DURATION
     logger.info("Recording...")
     frames = list(initial_blocks)
     silence_start: float | None = None
